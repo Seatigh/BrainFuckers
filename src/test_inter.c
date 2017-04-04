@@ -5,10 +5,13 @@
 #include <unistd.h>
 
 #define MEM_SIZE 15
+#define STACK_SIZE 10
+#define debug 1 // 0 off, 1 on
 
 int fd, i, m_pointer, loop_counter;
 char c;
 unsigned char memory [MEM_SIZE];
+unsigned int stack [STACK_SIZE] = {0};
 
 int isBF(char *str) {
 	if (str[strlen(str)-3] == '.' && str[strlen(str)-2] == 'b' && str[strlen(str)-1] == 'f')
@@ -23,7 +26,7 @@ void showMemory () {
 	}
 	printf("\n");*/
 	for (i = 0; i < MEM_SIZE; i++) {
-		printf("%c ", memory[i]);
+		printf("%d ", (int) memory[i]);
 	}
 	/*char blanks [2*m_pointer];
 	memset(blanks, ' ', 2*m_pointer);
@@ -48,38 +51,41 @@ void showMemory () {
  *
  */
 void readBF () {
-	int loop_pointer;
+	int loop_pointer = 0; // Use a stack to the loop_pointers
 	while(read(fd, &c, 1) == 1) {
 		/* Conditions to parser 2 brainfuck */
+		#if debug
+		printf("c: %c\n", c);
+		#endif
 		if (c == '>')
 			m_pointer = (m_pointer + 1) % MEM_SIZE;
 		else if (c == '<')
 			m_pointer = (m_pointer - 1) % MEM_SIZE;
 		else if (c == '+')
-			memory[m_pointer] = (memory[m_pointer] + 1) % 255;
+			memory[m_pointer]++;
 		else if (c == '-')
-			memory[m_pointer] = (memory[m_pointer] - 1) % 255;
+			memory[m_pointer]--;
 		else if (c == '.')
 			printf("%c", memory[m_pointer]);
-		else if (c == '[') { // CHECK THIS, IT ISN'T WORKING
-			// start while loop
-			loop_pointer = lseek(fd, 0, SEEK_CUR);
+		else if (c == '[') {
+			loop_pointer = lseek(fd, 0, SEEK_CUR) - 1;
 			if (memory[m_pointer] < 1) {
+				printf("Memory 0: jumping loop\n");
 				read(fd, &c, 1);
-				while (c != ']' && loop_counter > 0) {
-					if (c == '[')
-						loop_counter++;
-				}
-			} else {
-				readBF();
-			}
+				while(c != ']')
+					read(fd, &c, 1);
+			} else
+				continue;
 		} else if (c == ']') {
-			// end while loop
-			if (memory[m_pointer] > 0) {
+			// 2 possible solutions. Uncomment code to get the complex one
+			/*if (memory[m_pointer] > 0)*/
 				lseek(fd, loop_pointer, SEEK_SET);
-			}
+			/*else
+				continue;*/
 		}
+		#if debug
 		showMemory();
+		#endif
 	}
 }
 
@@ -116,7 +122,9 @@ int main (int argc, char *argv[]) {
 	m_pointer = 0;
 	loop_counter = 0;
 
-	//showMemory();
+	#if debug
+	showMemory();
+	#endif
 	readBF();
 	printf("\n");	
 	return 0;
