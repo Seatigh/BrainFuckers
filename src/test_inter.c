@@ -3,15 +3,16 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "../lib/stack.h"
 
-#define MEM_SIZE 15
-#define STACK_SIZE 10
-#define debug 1 // 0 off, 1 on
+#define MEM_SIZE 10000
+#define debug 0 // 0 off, 1 on
+#define debug2 0
 
-int fd, i, m_pointer, loop_counter;
-char c;
+int fd, i, m_pointer, nest_level, action;
+char c, in;
 unsigned char memory [MEM_SIZE];
-unsigned int stack [STACK_SIZE] = {0};
+stack s;
 
 int isBF(char *str) {
 	if (str[strlen(str)-3] == '.' && str[strlen(str)-2] == 'b' && str[strlen(str)-1] == 'f')
@@ -26,7 +27,7 @@ void showMemory () {
 	}
 	printf("\n");*/
 	for (i = 0; i < MEM_SIZE; i++) {
-		printf("%d ", (int) memory[i]);
+		printf("%c ", memory[i]);
 	}
 	/*char blanks [2*m_pointer];
 	memset(blanks, ' ', 2*m_pointer);
@@ -54,36 +55,95 @@ void readBF () {
 	int loop_pointer = 0; // Use a stack to the loop_pointers
 	while(read(fd, &c, 1) == 1) {
 		/* Conditions to parser 2 brainfuck */
-		#if debug
+		#if debug2
 		printf("c: %c\n", c);
 		#endif
-		if (c == '>')
+		if (c == '>') {
+			action++;
+			#if debug
+			printf("%d\tAction: >\t|\tmem pos: %d\n", action, (m_pointer + 1));
+			#endif
 			m_pointer = (m_pointer + 1) % MEM_SIZE;
-		else if (c == '<')
+		}
+		else if (c == '<') {
+			action++;
+			#if debug
+			printf("%d\tAction: <\t|\tmem pos: %d\n", action, (m_pointer - 1));
+			#endif
 			m_pointer = (m_pointer - 1) % MEM_SIZE;
-		else if (c == '+')
+		}
+		else if (c == '+') {
+			action++;
+			#if debug
+			printf("%d\tAction: +\t|\tmem[%d]: %d\n", action, m_pointer, (memory[m_pointer] + 1));
+			#endif
 			memory[m_pointer]++;
-		else if (c == '-')
+		}
+		else if (c == '-') {
+			action++;
+			#if debug
+			printf("%d\tAction: -\t|\tmem[%d]: %d\n", action, m_pointer, (memory[m_pointer] + 1));
+			#endif
 			memory[m_pointer]--;
-		else if (c == '.')
+		}
+		else if (c == '.') {
+			action++;
+			#if debug
+			printf("%d\tAction: .\t|\toutput: '%d' %c\n", action, (int) memory[m_pointer], memory[m_pointer]);
+			#endif
 			printf("%c", memory[m_pointer]);
+		}
+		else if (c == ',') {
+			action++;
+			#if debug
+			printf("%d\tAction: ,\t|\tread stdin: %c (%d)\n", action, memory[m_pointer], (int) memory[m_pointer]);
+			#endif
+			if (scanf("%c", &in) < 1) {printf("Error: stdin read failed.\n"); return;}
+			printf("input: %s\n", &in);
+			memory[m_pointer] = in;
+		}
 		else if (c == '[') {
-			loop_pointer = lseek(fd, 0, SEEK_CUR) - 1;
+			action++;
+			#if debug
+			printf("%d\tAction: [\t|\tmem[%d] is '%d' ** Loop nesting level: %d\n", action, m_pointer, (int)  memory[m_pointer], nest_level);
+			#endif
 			if (memory[m_pointer] < 1) {
-				printf("Memory 0: jumping loop\n");
+				#if debug
+				printf("\t\t\t|\tMemory 0: jumping loop\n");
+				#endif
 				read(fd, &c, 1);
 				while(c != ']')
 					read(fd, &c, 1);
-			} else
-				continue;
+			} else {
+				loop_pointer = lseek(fd, 0, SEEK_CUR) - 1;
+				push(&s, loop_pointer);
+				nest_level++;
+				// simple: continue;
+				#if debug
+				printf("\t\t\t|\tPush %d\n", loop_pointer);
+				#endif
+			}
 		} else if (c == ']') {
-			// 2 possible solutions. Uncomment code to get the complex one
-			/*if (memory[m_pointer] > 0)*/
-				lseek(fd, loop_pointer, SEEK_SET);
-			/*else
-				continue;*/
+			action++;
+			#if debug
+			printf("%d\tAction: ]\t|\tmem[%d] is '%d'\n", action, m_pointer, (int) memory[m_pointer]);
+			#endif
+			int p = pop(&s);
+			#if debug
+			printf("\t\t\t|\tPop: %d\n", p);
+			#endif
+			if (memory[m_pointer] > 0) {
+				lseek(fd, p, SEEK_SET);
+				nest_level--;
+				#if debug
+				printf("\t\t\t|\tLooping back to %d\n", p);
+				#endif
+			}
+			else {
+				// simple: continue;	
+			}
 		}
-		#if debug
+		#if debug2
 		showMemory();
 		#endif
 	}
@@ -107,22 +167,24 @@ int main (int argc, char *argv[]) {
 	 * Open and check file *
 	 ***********************/
 	fd = open(argv[1], O_RDONLY);
-	printf("fd: %i\n", fd);
+//	printf("fd: %i\n", fd);
 	if (fd < 0) {
 		fprintf(stderr, "Error: can't open file %s or it doesn't exits.\n", argv[1]);
 		return -1;
 	}
 
-	printf("Interpret file: %s\n", argv[1]);
+	printf("Interpret file: %s\n\n", argv[1]);
 
 	/***************
 	 * Init memory * // Memory could be initialliced in a dynamic way with all 0's
 	 **************/
 	memset(memory, 0, MEM_SIZE);
 	m_pointer = 0;
-	loop_counter = 0;
+	nest_level = 0;
+	action = 0;
+	s.pointer = 0;
 
-	#if debug
+	#if debug2
 	showMemory();
 	#endif
 	readBF();
